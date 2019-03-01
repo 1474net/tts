@@ -11,7 +11,6 @@ import (
 	"strconv"
 
 	"github.com/evalphobia/google-tts-go/googletts"
-	"github.com/gorilla/mux"
 )
 
 func init() {
@@ -32,7 +31,7 @@ func tokenGenerator() string {
 func mergefile() string {
 	// "-q", "-o 1.mp3", "D:/go/src/tts/tmp/2ce1af05.wav", "D:/go/src/tts/tmp/3aa32875.wav"
 	token = tokenGenerator()
-	cmd := exec.Command("./mp3cat", "-d", "./tmp/"+folder, "-o", "./tmp/"+folder+"/"+token+".wav")
+	cmd := exec.Command("./mp3/mp3cat", "-d", "./tmp/"+folder, "-o", "./tmp/"+folder+"/"+token+".wav")
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
@@ -79,13 +78,18 @@ func tts(text string, i int) {
 	defer resp.Body.Close()
 
 	// Create the file
+	if i == -1 {
+		token = tokenGenerator()
+		out, _ := os.Create("./tmp/" + folder + "/" + token + ".wav")
+		defer out.Close()
+		_, _ = io.Copy(out, resp.Body)
 
-	out, _ := os.Create("./tmp/" + folder + "/" + strconv.Itoa(i) + "_" + tokenGenerator() + ".mp3")
+	} else {
+		out, _ := os.Create("./tmp/" + folder + "/" + strconv.Itoa(i) + "_" + tokenGenerator() + ".mp3")
+		defer out.Close()
+		_, _ = io.Copy(out, resp.Body)
 
-	defer out.Close()
-
-	// Write the body to file
-	_, _ = io.Copy(out, resp.Body)
+	}
 
 }
 
@@ -98,21 +102,24 @@ func productsHandler(w http.ResponseWriter, r *http.Request) {
 	text := r.FormValue("text")
 	if len(text) > 200 {
 		textleng(text)
+		mergefile()
 	} else {
-		tts(text, 0)
+		tts(text, -1)
 	}
-	mergefile()
-	fmt.Fprint(w, "/file/"+folder+"/"+token+".wav")
+
+	// http.Redirect(w, r, "/file/"+folder+"/"+token+".wav", http.StatusMovedPermanently)
+
+	http.ServeFile(w, r, "./tmp/"+folder+"/"+token+".wav")
+	os.RemoveAll("./tmp/" + folder)
+
 }
 
 func main() {
 
-	router := mux.NewRouter()
+	http.HandleFunc("/tts/", productsHandler)
 
-	router.HandleFunc("/tts/", productsHandler)
-	http.Handle("/", router)
-
-	router.PathPrefix("/file/").Handler(http.StripPrefix("/file/", http.FileServer(http.Dir("./tmp"))))
+	fs := http.FileServer(http.Dir("./tmp"))
+	http.Handle("/file/", http.StripPrefix("/file/", fs))
 
 	fmt.Println("Server is listening...")
 	http.ListenAndServe(":8181", nil)
