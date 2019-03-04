@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"text/template"
 
 	"github.com/evalphobia/google-tts-go/googletts"
 )
@@ -29,7 +30,6 @@ func tokenGenerator() string {
 }
 
 func mergefile() string {
-	// "-q", "-o 1.mp3", "D:/go/src/tts/tmp/2ce1af05.wav", "D:/go/src/tts/tmp/3aa32875.wav"
 	token = tokenGenerator()
 	cmd := exec.Command("./mp3/mp3cat", "-d", "./tmp/"+folder, "-o", "./tmp/"+folder+"/"+token+".wav")
 	var out bytes.Buffer
@@ -94,12 +94,16 @@ func tts(text string, i int) {
 }
 
 func productsHandler(w http.ResponseWriter, r *http.Request) {
+	text := r.FormValue("text")
+	if text == "" {
+		fmt.Fprint(w, "Error null text")
+		return
+	}
 	folder = tokenGenerator()
 	if _, err := os.Stat("./tmp/" + folder); os.IsNotExist(err) {
 		os.Mkdir("./tmp/"+folder, os.ModePerm)
 	}
 
-	text := r.FormValue("text")
 	if len(text) > 200 {
 		textleng(text)
 		mergefile()
@@ -113,10 +117,24 @@ func productsHandler(w http.ResponseWriter, r *http.Request) {
 	os.RemoveAll("./tmp/" + folder)
 
 }
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+
+	test := struct {
+		Test string
+	}{
+		Test: "test",
+	}
+
+	tmpl, _ := template.ParseFiles("templates/index.html")
+
+	tmpl.Execute(w, test)
+}
 
 func main() {
-
+	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/tts/", productsHandler)
+
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	fs := http.FileServer(http.Dir("./tmp"))
 	http.Handle("/file/", http.StripPrefix("/file/", fs))
